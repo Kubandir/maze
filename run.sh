@@ -105,46 +105,44 @@ build_project() {
     fi
 }
 
-# Backup the project
+# Backup the project to git
 backup_project() {
-    log_info "Creating backup..."
-
-    # Create backup directory
-    mkdir -p $BACKUP_DIR
-
-    # Get next backup index
-    local next_index=1
-    if [ -d "$BACKUP_DIR" ]; then
-        for dir in $BACKUP_DIR/*; do
-            if [ -d "$dir" ]; then
-                local dir_name=$(basename "$dir")
-                if [[ $dir_name =~ ^[0-9]+$ ]]; then
-                    if [ $dir_name -ge $next_index ]; then
-                        next_index=$((dir_name + 1))
-                    fi
-                fi
-            fi
-        done
+    # Check if commit message was provided
+    if [ "$#" -eq 0 ]; then
+        log_error "Missing commit message. Usage: ./run.sh backup \"Your commit message\""
+        exit 1
     fi
 
-    # Create backup directory with index
-    local backup_path="$BACKUP_DIR/$next_index"
-    mkdir -p "$backup_path"
+    local commit_message="$1"
+    log_info "Backing up to git repository..."
 
-    # Copy important files (excluding build artifacts)
-    log_info "Copying source files..."
-    rsync -av --progress         --exclude="$BUILD_DIR"         --exclude="$BIN_DIR"         --exclude=".git"         --exclude="*.o"         --exclude="*.a"         --exclude="*.so"         --exclude="*.lib"         --exclude="*.dll"         --exclude=".DS_Store"         . "$backup_path/"
+    # Check if git is initialized
+    if [ ! -d ".git" ]; then
+        log_error "Git repository not initialized. Run 'git init' first."
+        exit 1
+    fi
 
-    # Create timestamp file
-    date > "$backup_path/timestamp.txt"
-    echo "$USER" >> "$backup_path/timestamp.txt"
+    # Add all files
+    log_info "Adding files to git..."
+    git add .
 
-    # Create archive for easy transport
-    log_info "Creating compressed archive..."
-    tar -czf "$backup_path/${PROJECT_NAME}_backup_$(date +%Y%m%d_%H%M%S).tar.gz" -C "$backup_path" --exclude="*.tar.gz" .
+    # Commit with provided message
+    log_info "Committing changes: \"$commit_message\""
+    git commit -m "$commit_message"
 
-    log_info "Backup completed successfully to $backup_path"
-    log_info "Archive created at $backup_path/${PROJECT_NAME}_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
+    # Set main branch
+    log_info "Setting main branch..."
+    git branch -M main
+
+    # Push to remote
+    log_info "Pushing to remote repository..."
+    if git push -u origin main; then
+        log_info "Backup to git completed successfully"
+    else
+        log_error "Failed to push to remote repository"
+        log_warn "Ensure remote 'origin' is configured: git remote add origin <repository-url>"
+        exit 1
+    fi
 }
 
 # Main execution
@@ -158,7 +156,8 @@ case "$1" in
         build_project "$1"
         ;;
     "backup")
-        backup_project
+        shift  # Remove 'backup' from arguments
+        backup_project "$*"  # Pass all remaining arguments as commit message
         ;;
     "help"|"-h"|"--help")
         show_help

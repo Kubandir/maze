@@ -19,8 +19,18 @@ include_directories(
 # Find source files
 file(GLOB_RECURSE SOURCES "src/*.cpp")
 
+# Find ncurses package
+find_package(Curses REQUIRED)
+include_directories(${CURSES_INCLUDE_DIR})
+
 # Define the executable
 add_executable(${PROJECT_NAME} ${SOURCES})
+
+# Link against ncurses
+target_link_libraries(${PROJECT_NAME} ${CURSES_LIBRARIES})
+
+# Add compile options for wide character support
+target_compile_options(${PROJECT_NAME} PRIVATE -D_XOPEN_SOURCE_EXTENDED)
 
 # Add compiler options based on build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
