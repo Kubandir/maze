@@ -1,6 +1,6 @@
 #include "../include/mazeGenerator.hpp"
 
-MazeGenerator::MazeGenerator() : width(0), height(0) {
+MazeGenerator::MazeGenerator() : width(0), height(0), solving(false), solvingStep(0), explorationComplete(false) {
     std::random_device rd;
     gen.seed(rd());
 }
@@ -18,8 +18,10 @@ void MazeGenerator::generate(int w, int h) {
     width = w;
     height = h;
     solutionPath.clear();
+    explorationPath.clear();
     solving = false;
     solvingStep = 0;
+    explorationComplete = false;
 
     grid = std::vector<std::vector<char>>(height, std::vector<char>(width, '#'));
 
@@ -73,6 +75,8 @@ void MazeGenerator::startSolving() {
     solving = true;
     solvingStep = 0;
     solutionPath.clear();
+    explorationPath.clear();
+    explorationComplete = false;
     lastStepTime = std::chrono::steady_clock::now();
 
     std::vector<std::vector<bool>> visited(height, std::vector<bool>(width, false));
@@ -84,6 +88,7 @@ void MazeGenerator::startSolving() {
 
     q.push({startY, startX});
     visited[startY][startX] = true;
+    explorationPath.push_back({startY, startX});
 
     const int dy[4] = {-1, 0, 1, 0};
     const int dx[4] = {0, 1, 0, -1};
@@ -107,6 +112,7 @@ void MazeGenerator::startSolving() {
                 visited[ny][nx] = true;
                 parent[ny][nx] = {y, x};
                 q.push({ny, nx});
+                explorationPath.push_back({ny, nx});
             }
         }
     }
@@ -136,12 +142,7 @@ bool MazeGenerator::isSolving() const {
 }
 
 bool MazeGenerator::solveStep() {
-    if (!solving || solutionPath.empty()) return false;
-
-    if (solvingStep >= static_cast<int>(solutionPath.size())) {
-        solving = false;
-        return false;
-    }
+    if (!solving) return false;
 
     auto currentTime = std::chrono::steady_clock::now();
     auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -151,10 +152,26 @@ bool MazeGenerator::solveStep() {
         return true;
     }
 
-    solvingStep++;
     lastStepTime = currentTime;
 
-    return true;
+    if (!explorationComplete) {
+        if (solvingStep < static_cast<int>(explorationPath.size())) {
+            solvingStep++;
+            return true;
+        } else {
+            explorationComplete = true;
+            solvingStep = 0;
+            return true;
+        }
+    } else {
+        if (solvingStep < static_cast<int>(solutionPath.size())) {
+            solvingStep++;
+            return true;
+        } else {
+            solving = false;
+            return false;
+        }
+    }
 }
 
 int MazeGenerator::getSolvingStep() const {
@@ -167,6 +184,14 @@ const std::vector<std::vector<char>>& MazeGenerator::getGrid() const {
 
 const std::vector<std::pair<int, int>>& MazeGenerator::getSolutionPath() const {
     return solutionPath;
+}
+
+const std::vector<std::pair<int, int>>& MazeGenerator::getExplorationPath() const {
+    return explorationPath;
+}
+
+bool MazeGenerator::isExplorationComplete() const {
+    return explorationComplete;
 }
 
 int MazeGenerator::getWidth() const {

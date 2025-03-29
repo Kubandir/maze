@@ -2,20 +2,17 @@
 
 set -e
 
-PROJECT_NAME="maze"
+PROJECT_NAME="mazegen"
 BUILD_DIR="build"
-BIN_DIR="bin"
 SRC_DIR="src"
-BACKUP_DIR="backup"
 
-# ANSI color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 RESET='\033[0m'
 
-# Function definitions
 log_info() {
     echo -e "${GREEN}[INFO]${RESET} $1"
 }
@@ -28,145 +25,313 @@ log_error() {
     echo -e "${RED}[ERROR]${RESET} $1" >&2
 }
 
-# Show help
-show_help() {
-    echo -e "${BLUE}Usage:${RESET} ./run.sh [dev|release|backup]"
-    echo
-    echo -e "${YELLOW}Commands:${RESET}"
-    echo "  dev     - Build with minimal optimizations for development and run"
-    echo "  release - Build with full optimizations and security features and run"
-    echo "  backup  - Create a backup of the project"
+log_step() {
+    echo -e "${BLUE}[STEP]${RESET} $1"
+}
+
+show_banner() {
+    echo -e "${CYAN}"
+    echo "███╗   ███╗ █████╗ ███████╗███████╗ ██████╗ ███████╗███╗   ██╗"
+    echo "████╗ ████║██╔══██╗╚══███╔╝██╔════╝██╔════╝ ██╔════╝████╗  ██║"
+    echo "██╔████╔██║███████║  ███╔╝ █████╗  ██║  ███╗█████╗  ██╔██╗ ██║"
+    echo "██║╚██╔╝██║██╔══██║ ███╔╝  ██╔══╝  ██║   ██║██╔══╝  ██║╚██╗██║"
+    echo "██║ ╚═╝ ██║██║  ██║███████╗███████╗╚██████╔╝███████╗██║ ╚████║"
+    echo "╚═╝     ╚═╝╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝"
+    echo -e "${RESET}"
+    echo -e "${YELLOW}Installer Script${RESET}"
     echo
 }
 
-# Build the project
-build_project() {
-    local build_type=$1
-    local cmake_build_type=""
+check_permissions() {
+    if [ "$EUID" -ne 0 ]; then
+        log_error "This installer requires root privileges."
+        echo -e "Please run with ${YELLOW}sudo${RESET}:"
+        echo -e "${YELLOW}sudo ./run.sh${RESET}"
+        exit 1
+    fi
+}
 
-    if [ "$build_type" == "dev" ]; then
-        cmake_build_type="Debug"
-        log_info "Building project in development mode"
-    elif [ "$build_type" == "release" ]; then
-        cmake_build_type="Release"
-        log_info "Building project in release mode with optimizations"
+detect_os() {
+    log_step "Detecting operating system..."
+
+    OS_TYPE="unknown"
+    PACKAGE_MANAGER="unknown"
+    INSTALL_CMD="unknown"
+    BIN_DIR="/usr/local/bin"
+
+    if [ "$(uname)" == "Linux" ]; then
+        OS_TYPE="linux"
+
+        if [ -f /etc/os-release ]; then
+            source /etc/os-release
+            DISTRO=$ID
+            log_info "Detected Linux distribution: $DISTRO"
+
+            case $DISTRO in
+                ubuntu|debian|linuxmint|pop|elementary|zorin|kali|parrot|deepin)
+                    PACKAGE_MANAGER="apt"
+                    INSTALL_CMD="apt-get install -y"
+                    ;;
+                fedora|centos|rhel|redhat|almalinux|rocky)
+                    PACKAGE_MANAGER="dnf"
+                    INSTALL_CMD="dnf install -y"
+                    # For older CentOS/RHEL versions
+                    if ! command -v dnf &>/dev/null && command -v yum &>/dev/null; then
+                        PACKAGE_MANAGER="yum"
+                        INSTALL_CMD="yum install -y"
+                    fi
+                    ;;
+                arch|manjaro|endeavouros)
+                    PACKAGE_MANAGER="pacman"
+                    INSTALL_CMD="pacman -S --noconfirm"
+                    ;;
+                opensuse*|suse|sles)
+                    PACKAGE_MANAGER="zypper"
+                    INSTALL_CMD="zypper install -y"
+                    ;;
+                gentoo)
+                    PACKAGE_MANAGER="emerge"
+                    INSTALL_CMD="emerge -av"
+                    ;;
+                void)
+                    PACKAGE_MANAGER="xbps"
+                    INSTALL_CMD="xbps-install -y"
+                    ;;
+                alpine)
+                    PACKAGE_MANAGER="apk"
+                    INSTALL_CMD="apk add"
+                    ;;
+                slackware)
+                    PACKAGE_MANAGER="slackpkg"
+                    INSTALL_CMD="slackpkg install"
+                    ;;
+                *)
+                    log_warn "Unknown distribution: $DISTRO"
+                    log_warn "Installation may fail or be incomplete"
+                    ;;
+            esac
+        else
+            log_warn "Could not determine Linux distribution"
+            log_warn "Trying to detect package manager..."
+
+            if command -v apt-get &>/dev/null; then
+                PACKAGE_MANAGER="apt"
+                INSTALL_CMD="apt-get install -y"
+            elif command -v dnf &>/dev/null; then
+                PACKAGE_MANAGER="dnf"
+                INSTALL_CMD="dnf install -y"
+            elif command -v yum &>/dev/null; then
+                PACKAGE_MANAGER="yum"
+                INSTALL_CMD="yum install -y"
+            elif command -v pacman &>/dev/null; then
+                PACKAGE_MANAGER="pacman"
+                INSTALL_CMD="pacman -S --noconfirm"
+            elif command -v zypper &>/dev/null; then
+                PACKAGE_MANAGER="zypper"
+                INSTALL_CMD="zypper install -y"
+            elif command -v emerge &>/dev/null; then
+                PACKAGE_MANAGER="emerge"
+                INSTALL_CMD="emerge -av"
+            elif command -v xbps-install &>/dev/null; then
+                PACKAGE_MANAGER="xbps"
+                INSTALL_CMD="xbps-install -y"
+            elif command -v apk &>/dev/null; then
+                PACKAGE_MANAGER="apk"
+                INSTALL_CMD="apk add"
+            else
+                log_error "Could not detect package manager"
+                log_error "Please install dependencies manually:"
+                log_error "  - build-essential/base-devel/build-base (or equivalent)"
+                log_error "  - cmake"
+                log_error "  - ncurses development libraries"
+                log_error "  - upx (optional, for binary compression)"
+                exit 1
+            fi
+        fi
+    elif [ "$(uname)" == "Darwin" ]; then
+        OS_TYPE="macos"
+        PACKAGE_MANAGER="brew"
+        INSTALL_CMD="brew install"
+        BIN_DIR="/usr/local/bin"
+        log_info "Detected macOS"
     else
-        log_error "Unknown build type: $build_type"
+        log_error "Unsupported operating system: $(uname)"
         exit 1
     fi
 
-    # Create build directory if it doesn't exist
-    mkdir -p $BUILD_DIR
+    log_info "Using package manager: $PACKAGE_MANAGER"
+}
 
-    # Remove existing binary if it exists
-    if [ -f "$BIN_DIR/$PROJECT_NAME" ]; then
-        log_info "Removing existing binary..."
-        rm "$BIN_DIR/$PROJECT_NAME"
+check_dependencies() {
+    log_step "Checking and installing dependencies..."
+
+    local BUILD_TOOLS=""
+    local NCURSES_DEV=""
+    local UPX_PACKAGE="upx"
+
+    case $PACKAGE_MANAGER in
+        apt)
+            BUILD_TOOLS="build-essential"
+            NCURSES_DEV="libncurses5-dev libncursesw5-dev"
+            ;;
+        dnf|yum)
+            BUILD_TOOLS="gcc gcc-c++ make"
+            NCURSES_DEV="ncurses-devel"
+            ;;
+        pacman)
+            BUILD_TOOLS="base-devel"
+            NCURSES_DEV="ncurses"
+            ;;
+        zypper)
+            BUILD_TOOLS="gcc gcc-c++ make"
+            NCURSES_DEV="ncurses-devel"
+            ;;
+        emerge)
+            BUILD_TOOLS="sys-devel/gcc sys-devel/make"
+            NCURSES_DEV="sys-libs/ncurses"
+            ;;
+        xbps)
+            BUILD_TOOLS="base-devel"
+            NCURSES_DEV="ncurses-devel"
+            ;;
+        apk)
+            BUILD_TOOLS="build-base"
+            NCURSES_DEV="ncurses-dev"
+            UPX_PACKAGE="upx"
+            ;;
+        brew)
+            BUILD_TOOLS="gcc make"
+            NCURSES_DEV="ncurses"
+            ;;
+        *)
+            log_error "Unsupported package manager: $PACKAGE_MANAGER"
+            exit 1
+            ;;
+    esac
+
+    if ! command -v cmake &>/dev/null; then
+        log_info "Installing CMake..."
+        eval sudo $INSTALL_CMD cmake
+    else
+        log_info "CMake is already installed"
     fi
 
-    # Configure with CMake
-    log_info "Configuring with CMake..."
-    cd $BUILD_DIR
-    cmake -DCMAKE_BUILD_TYPE=$cmake_build_type ..
-
-    # Build
-    log_info "Building project..."
-    cmake --build . -- -j$(nproc)
-
-    # Link to bin directory
-    cd ..
-    mkdir -p $BIN_DIR
-
-    if [ -f "$BUILD_DIR/bin/$PROJECT_NAME" ]; then
-        cp "$BUILD_DIR/bin/$PROJECT_NAME" "$BIN_DIR/"
-        log_info "Binary created at $BIN_DIR/$PROJECT_NAME"
-
-        # Additional steps for release builds
-        if [ "$build_type" == "release" ]; then
-            log_info "Applying additional release optimizations..."
-            strip --strip-all "$BIN_DIR/$PROJECT_NAME"
-
-            # Compress binary to reduce size (if upx is installed)
-            if command -v upx &> /dev/null; then
-                log_info "Compressing binary with UPX..."
-                upx --best --lzma "$BIN_DIR/$PROJECT_NAME"
-            else
-                log_warn "UPX not installed. Binary compression skipped."
-                log_warn "Install UPX for better compression: sudo apt install upx"
-            fi
+    log_info "Installing build tools..."
+    if [ "$PACKAGE_MANAGER" == "apt" ]; then
+        if ! dpkg -s build-essential &>/dev/null; then
+            eval sudo $INSTALL_CMD $BUILD_TOOLS
+        else
+            log_info "Build tools are already installed"
         fi
-
-        # Run the program
-        log_info "Running the application..."
-        "$BIN_DIR/$PROJECT_NAME"
+    elif [ "$PACKAGE_MANAGER" == "brew" ]; then
+        if ! command -v gcc &>/dev/null; then
+            eval $INSTALL_CMD $BUILD_TOOLS
+        else
+            log_info "Build tools are already installed"
+        fi
     else
+        eval sudo $INSTALL_CMD $BUILD_TOOLS
+    fi
+
+    log_info "Installing ncurses development libraries..."
+    if [ "$PACKAGE_MANAGER" == "apt" ]; then
+        if ! dpkg -s libncurses5-dev &>/dev/null || ! dpkg -s libncursesw5-dev &>/dev/null; then
+            eval sudo $INSTALL_CMD $NCURSES_DEV
+        else
+            log_info "Ncurses libraries are already installed"
+        fi
+    else
+        eval sudo $INSTALL_CMD $NCURSES_DEV
+    fi
+
+    if ! command -v upx &>/dev/null; then
+        log_info "Installing UPX (optional for binary compression)..."
+        if eval sudo $INSTALL_CMD $UPX_PACKAGE; then
+            log_info "UPX installed successfully"
+        else
+            log_warn "Failed to install UPX. Binary compression will be skipped."
+            log_warn "This is not critical for the project."
+        fi
+    else
+        log_info "UPX is already installed"
+    fi
+}
+
+build_project() {
+    log_step "Building project in release mode..."
+
+    mkdir -p "$BUILD_DIR"
+
+    pushd "$BUILD_DIR" >/dev/null
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+
+    log_info "Compiling with optimizations enabled..."
+
+    if [ "$OS_TYPE" == "linux" ]; then
+        CORES=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 1)
+    elif [ "$OS_TYPE" == "macos" ]; then
+        CORES=$(sysctl -n hw.ncpu 2>/dev/null || echo 1)
+    else
+        CORES=1
+    fi
+
+    cmake --build . -- -j$CORES
+    popd >/dev/null
+
+    if [ ! -f "$BUILD_DIR/bin/$PROJECT_NAME" ]; then
         log_error "Build failed! Binary not found."
         exit 1
     fi
+
+    log_info "Build completed successfully."
 }
 
-# Backup the project to git
-backup_project() {
-    # Check if commit message was provided
-    if [ "$#" -eq 0 ]; then
-        log_error "Missing commit message. Usage: ./run.sh backup \"Your commit message\""
-        exit 1
+optimize_binary() {
+    log_step "Optimizing binary size..."
+
+    if [ "$OS_TYPE" == "linux" ]; then
+        strip --strip-all "$BUILD_DIR/bin/$PROJECT_NAME"
+    elif [ "$OS_TYPE" == "macos" ]; then
+        strip "$BUILD_DIR/bin/$PROJECT_NAME"
     fi
 
-    local commit_message="$1"
-    log_info "Backing up to git repository..."
-
-    # Check if git is initialized
-    if [ ! -d ".git" ]; then
-        log_error "Git repository not initialized. Run 'git init' first."
-        exit 1
-    fi
-
-    # Add all files
-    log_info "Adding files to git..."
-    git add .
-
-    # Commit with provided message
-    log_info "Committing changes: \"$commit_message\""
-    git commit -m "$commit_message"
-
-    # Set main branch
-    log_info "Setting main branch..."
-    git branch -M main
-
-    # Push to remote
-    log_info "Pushing to remote repository..."
-    if git push -u origin main; then
-        log_info "Backup to git completed successfully"
+    if command -v upx &>/dev/null; then
+        log_info "Compressing binary with UPX..."
+        upx --best --lzma "$BUILD_DIR/bin/$PROJECT_NAME" || log_warn "UPX compression failed, but continuing..."
     else
-        log_error "Failed to push to remote repository"
-        log_warn "Ensure remote 'origin' is configured: git remote add origin <repository-url>"
-        exit 1
+        log_warn "UPX not available. Skipping binary compression."
     fi
 }
 
-# Main execution
-if [ "$#" -eq 0 ]; then
-    show_help
-    exit 0
-fi
+install_binary() {
+    log_step "Installing $PROJECT_NAME to system..."
 
-case "$1" in
-    "dev"|"release")
-        build_project "$1"
-        ;;
-    "backup")
-        shift  # Remove 'backup' from arguments
-        backup_project "$*"  # Pass all remaining arguments as commit message
-        ;;
-    "help"|"-h"|"--help")
-        show_help
-        ;;
-    *)
-        log_error "Unknown command: $1"
-        show_help
-        exit 1
-        ;;
-esac
+    mkdir -p "$BIN_DIR"
+
+    cp "$BUILD_DIR/bin/$PROJECT_NAME" "$BIN_DIR/"
+    chmod 755 "$BIN_DIR/$PROJECT_NAME"
+
+    if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+        log_warn "$BIN_DIR is not in your PATH"
+        log_warn "You may need to run: export PATH=\"$PATH:$BIN_DIR\""
+    fi
+
+    log_info "Installation completed successfully."
+    echo -e "${GREEN}┌─────────────────────────────────────────────────┐${RESET}"
+    echo -e "${GREEN}│                                                 │${RESET}"
+    echo -e "${GREEN}│  $PROJECT_NAME has been installed successfully!       │${RESET}"
+    echo -e "${GREEN}│                                                 │${RESET}"
+    echo -e "${GREEN}│  Run it by typing:${RESET} ${CYAN}$PROJECT_NAME${RESET}                      ${GREEN}│${RESET}"
+    echo -e "${GREEN}│                                                 │${RESET}"
+    echo -e "${GREEN}└─────────────────────────────────────────────────┘${RESET}"
+}
+
+show_banner
+check_permissions
+detect_os
+check_dependencies
+build_project
+optimize_binary
+install_binary
 
 exit 0

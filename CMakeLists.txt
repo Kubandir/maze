@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(maze VERSION 1.0.0 LANGUAGES CXX)
+project(mazegen VERSION 1.0.0 LANGUAGES CXX)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -55,6 +55,7 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
         -funroll-loops
         -fpeel-loops
         -fomit-frame-pointer
+        -fexceptions
     )
     # Strip symbols in release mode
     set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "-Wl,--gc-sections -Wl,--strip-all -s")

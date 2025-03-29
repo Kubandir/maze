@@ -14,11 +14,13 @@ private:
     int height;
     std::vector<std::vector<char>> grid;
     std::vector<std::pair<int, int>> solutionPath;
+    std::vector<std::pair<int, int>> explorationPath;
     std::mt19937 gen;
     bool solving;
     int solvingStep;
     static const int solvingAnimationDelay = 20;
     std::chrono::steady_clock::time_point lastStepTime;
+    bool explorationComplete;
 
     int randomInt(int lower, int upper);
 
@@ -31,7 +33,9 @@ public:
     bool solveStep();
     const std::vector<std::vector<char>>& getGrid() const;
     const std::vector<std::pair<int, int>>& getSolutionPath() const;
+    const std::vector<std::pair<int, int>>& getExplorationPath() const;
     int getSolvingStep() const;
+    bool isExplorationComplete() const;
     int getWidth() const;
     int getHeight() const;
     void updateCell(int y, int x, char c);

@@ -22,6 +22,9 @@ void signalHandler(int signum) {
 
 void resizeHandler(int) {
     resizeNeeded = true;
+    if (globalDisplayPtr) {
+        globalDisplayPtr->setResizeNeeded(true);
+    }
 }
 
 void mainLoop(Display& display, MazeGenerator& maze) {
@@ -99,6 +102,9 @@ int main() {
 
         globalMazePtr = &maze;
         globalDisplayPtr = &display;
+
+        signal(SIGINT, signalHandler);
+        signal(SIGWINCH, resizeHandler);
 
         display.setup();
         display.updateTermsize();

@@ -40,6 +40,8 @@ public:
     void setOffsetY(int y);
     void setNeedsRedraw(bool value);
     bool getNeedsRedraw() const;
+    void setResizeNeeded(bool value);
+    bool getResizeNeeded() const;
     int* getTermsize();
 };
 

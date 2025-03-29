@@ -18,7 +18,8 @@ Display::Display() : offsetX(0), offsetY(0), needsRedraw(true), resizeNeeded(fal
         {"white", 1},
         {"green", 2},
         {"gray", 3},
-        {"red", 4}
+        {"red", 4},
+        {"blue", 5}
     };
 }
 
@@ -31,14 +32,16 @@ void Display::setupColors() {
         start_color();
         if (!can_change_color()) {
             init_pair(1, COLOR_WHITE, COLOR_BLACK); // White text
-            init_pair(2, COLOR_GREEN, COLOR_BLACK); // Green text (for path)
-            init_pair(3, COLOR_WHITE, COLOR_BLACK); // Gray text
-            init_pair(4, COLOR_RED, COLOR_BLACK);   // Red text
+            init_pair(2, COLOR_GREEN, COLOR_BLACK); // Green text
+            init_pair(3, COLOR_WHITE, COLOR_BLACK); // Gray  text
+            init_pair(4, COLOR_RED, COLOR_BLACK);   // Red   text
+            init_pair(5, COLOR_BLUE, COLOR_BLACK);  // Blue  text
         } else {
             init_pair(1, COLOR_WHITE, COLOR_BLACK); // White text
-            init_pair(2, COLOR_GREEN, COLOR_BLACK); // Green text (for path)
-            init_pair(3, 8, COLOR_BLACK);          // Gray text
-            init_pair(4, COLOR_RED, COLOR_BLACK);   // Red text
+            init_pair(2, COLOR_GREEN, COLOR_BLACK); // Green text
+            init_pair(3, 8, COLOR_BLACK);           // Gray  text
+            init_pair(4, COLOR_RED, COLOR_BLACK);   // Red   text
+            init_pair(5, COLOR_BLUE, COLOR_BLACK);  // Blue  text
         }
         attron(COLOR_PAIR(1));
     }
@@ -46,10 +49,6 @@ void Display::setupColors() {
 
 void Display::setup() {
     setlocale(LC_ALL, "en_US.UTF-8");
-
-    signal(SIGINT, signalHandler);
-    signal(SIGWINCH, resizeHandler);
-
     initscr();
     curs_set(0);
     noecho();
@@ -81,6 +80,13 @@ void Display::checkResize() {
     refresh();
     clear();
     updateTermsize();
+
+    curs_set(0);
+
+    keypad(stdscr, TRUE);
+    nodelay(stdscr, TRUE);
+
+    setupColors();
 
     redrawwin(stdscr);
     refresh();
@@ -184,11 +190,13 @@ void Display::drawMaze(const MazeGenerator& maze) {
 
     const auto& grid = maze.getGrid();
     const auto& solutionPath = maze.getSolutionPath();
+    const auto& explorationPath = maze.getExplorationPath();
 
     int startY = termsize[0] / 2 - mazeHeight / 2;
     int startX = termsize[1] / 2 - mazeWidth / 2;
 
     int step = maze.getSolvingStep();
+    bool explorationComplete = maze.isExplorationComplete();
 
     for (int row = 0; row < mazeHeight; row++) {
         for (int col = 0; col < mazeWidth; col++) {
@@ -200,11 +208,29 @@ void Display::drawMaze(const MazeGenerator& maze) {
             }
 
             bool isOnPath = false;
+            bool isExplored = false;
+
             if (maze.isSolving() || !solutionPath.empty()) {
-                for (int i = 0; i < step && i < static_cast<int>(solutionPath.size()); i++) {
-                    if (solutionPath[i].first == row && solutionPath[i].second == col) {
-                        isOnPath = true;
-                        break;
+                if (!explorationComplete) {
+                    for (int i = 0; i < step && i < static_cast<int>(explorationPath.size()); i++) {
+                        if (explorationPath[i].first == row && explorationPath[i].second == col) {
+                            isExplored = true;
+                            break;
+                        }
+                    }
+                } else {
+                    for (const auto& cell : explorationPath) {
+                        if (cell.first == row && cell.second == col) {
+                            isExplored = true;
+                            break;
+                        }
+                    }
+
+                    for (int i = 0; i < step && i < static_cast<int>(solutionPath.size()); i++) {
+                        if (solutionPath[i].first == row && solutionPath[i].second == col) {
+                            isOnPath = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -213,6 +239,10 @@ void Display::drawMaze(const MazeGenerator& maze) {
                 attron(COLOR_PAIR(2));
                 mvaddch(yPos, xPos, '.');
                 attroff(COLOR_PAIR(2));
+            } else if (isExplored) {
+                attron(COLOR_PAIR(3));
+                mvaddch(yPos, xPos, '*');
+                attroff(COLOR_PAIR(3));
             } else {
                 mvaddch(yPos, xPos, grid[row][col]);
             }
@@ -275,6 +305,14 @@ void Display::setNeedsRedraw(bool value) {
 
 bool Display::getNeedsRedraw() const {
     return needsRedraw;
+}
+
+void Display::setResizeNeeded(bool value) {
+    resizeNeeded = value;
+}
+
+bool Display::getResizeNeeded() const {
+    return resizeNeeded;
 }
 
 int* Display::getTermsize() {
