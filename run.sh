@@ -75,7 +75,6 @@ detect_os() {
                 fedora|centos|rhel|redhat|almalinux|rocky)
                     PACKAGE_MANAGER="dnf"
                     INSTALL_CMD="dnf install -y"
-                    # For older CentOS/RHEL versions
                     if ! command -v dnf &>/dev/null && command -v yum &>/dev/null; then
                         PACKAGE_MANAGER="yum"
                         INSTALL_CMD="yum install -y"

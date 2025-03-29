@@ -2,6 +2,7 @@ build/
 bin/
 backup/
 dev.sh
+backup.sh
 *.d
 *.slo
 *.lo
